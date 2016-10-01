@@ -1,0 +1,127 @@
+---
+title: "US Storm Data Analysis"
+author: "Aroogz"
+date: "October 1, 2016"
+output: html_document
+---
+```{r echo=FALSE}
+options(warn = -1)
+```
+
+SYNOPSIS: The analysis of US Storm Data is presented in this document. The analysis is done with the R programming language.The two questions are to be derived #from the data. First is to derive the events that have the greatest economic consequences. Secondly is to derive the most harmful event types, with respect to public health. The analysis makes effort to show this by making plots that answer the questions. 
+
+## Preparing the workspace
+
+load/install the required packages: ggplot2 and dplyr packages were used in this analysis
+    
+```{r preparing workspace, message=FALSE}    
+rm(list = ls())
+if("dplyr" %in% row.names(installed.packages()) == FALSE){install.packages("dplyr")}
+if ("ggplot2" %in% row.names(installed.packages()) == FALSE){install.packages("ggplot2")}
+library(dplyr)
+library(ggplot2)
+```
+
+## Data Processing
+
+Getting the required dataset:
+```{r getting data, cache=TRUE, include=FALSE}
+if(!file.exists("Storm_Data.csv.bz2")){
+  download.file(url = "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", mode = "wb", destfile = "Storm_Data.csv.bz2") }
+```
+reading in the data:
+```{r reading data}
+temp_data <- read.csv("Storm_Data.csv.bz2", stringsAsFactors = F)
+```
+
+Cleaning up the data and extracting the necessary variables:
+```{r cleaning}
+var <- c("COUNTYNAME", "EVTYPE", "FATALITIES", "INJURIES", "PROPDMG","PROPDMGEXP", "CROPDMG" , "CROPDMGEXP")
+
+storm_data1 <- temp_data[, var]
+#remove data to free up space
+rm(temp_data)
+```
+To handle the data the `PROPDMGEXP` variable is encoded to the exponential values as gotten from [here](https://rstudio-pubs-static.s3.amazonaws.com/58957_37b6723ee52b455990e149edde45e5b6.html)
+
+- H,h = hundreds = 100
+
+- K,k = kilos = thousands = 1,000
+
+- M,m = millions = 1,000,000
+
+- B,b = billions = 1,000,000,000
+
+- (+) = 1
+
+- (-) = 0
+
+- (?) = 0
+
+- black/empty character = 0
+
+- numeric 0..8 = 10
+
+I also create another variable `prop_dmg_value` that store the product of the individual `PROPDMG` and `PROPDMGEXP` variables to give the real value for property damage
+
+```{r property value, message=FALSE}
+prop_dmg_exp <- factor(storm_data1$PROPDMGEXP, levels = unique(storm_data1$PROPDMGEXP), 
+                     labels = c("1000", "1000000", "0", "1000000000", "1000000", "1", "10", "10", "10", "0", "10", "10", "10", "100", "10", "100", "0", "10", "10"))
+
+storm_data1$prop_dmg_value <- as.numeric(as.character(storm_data1$PROPDMG)) * as.numeric(as.character(prop_dmg_exp))
+```
+
+Similar operation is carried out on the `CROPDMG` and `CROPDMGEXP` variables and creating a new variable `crop_dmg_value`.
+```{r crop value, message=FALSE}
+crop_dmg_exp <- factor(storm_data1$CROPDMGEXP, levels = unique(storm_data1$CROPDMGEXP), 
+                       labels = c("0", "1000000", "1000", "1000000", "1000000000", "0", "10", "1000", "10"))
+
+storm_data1$crop_dmg_value <- as.numeric(as.character(storm_data1$CROPDMG)) * as.numeric(as.character(crop_dmg_exp))
+```
+
+The sum of `prop_dmg_value` and `crop_dmg_value` is calculated and stored up in the `total_cost` variable.
+```{r total_cost}
+storm_data1$total_cost <- storm_data1$prop_dmg_value + storm_data1$crop_dmg_value
+```
+
+## Results
+
+```{r cost table}
+#aggregating the total_cost with respect to event type
+cost <- summarise(group_by(storm_data1, EVTYPE), cost = sum(total_cost))
+cost <- arrange(cost, desc(cost))
+```
+
+The plot of the 10 most econmically devastating event types is plotted showing the monetary losses in property and crop damages.
+From the plot, Flood appears to be the most economically devastating event type. The economic effect is also far larger than the immediate following event type which is the Hurricane/Typhoon event type.
+```{r economic loss plot}
+ggplot(cost[1:10, ], aes(factor(EVTYPE, levels = EVTYPE[1:10]), cost))+
+                        geom_bar(stat= "identity", col= "red", fill = "blue", alpha= 0.2)+
+                        labs(title = "Top 10 Economically Devastating Storm Event Type", x = "Event Type", y= "Cost of Property Loss")+
+                      theme(axis.text.x = element_text(angle = 90, size = 8))
+```
+
+For the purpose of this analysis and measuring the harm resulting from each event type, I have taken 3 injury cases to be equivalent to 1 death.
+That is to say, one death is assumed to be same as 3 injured persons.
+```{r harm table}
+#aggregating the weighted_harm with respect to the event type
+storm_data1$weighted_harm <- 3 * as.numeric(storm_data1$FATALITIES) + as.numeric(storm_data1$INJURIES)
+Harm <- summarise(group_by(storm_data1, EVTYPE), harm_done = sum(weighted_harm))
+Harm <- arrange(Harm, desc(harm_done))
+```
+The plot of the 10 most harzadous (to public health) events are plotted showing the extent of damage for each event type.
+From the plot, Tornado appears to be the most harmful event type with respect to public health. The difference between the effect of Tornados and the ther event types is clearly phenomenal.
+
+```{r Harm plot}
+ggplot(Harm[1:10,], aes(factor(EVTYPE, levels = EVTYPE[1:10]), harm_done))+
+                      geom_bar(stat= "identity", col= "red", fill= "blue", alpha= 0.2)+
+                      labs(title= "Top 10 Most Devastating Storm Event Type to Population Health",
+                           x = "Event Type", y= "Fatality Index")+
+                      theme(axis.text.x = element_text(angle = 90, size = 8))
+```
+
+Thanks for reading
+```{r clear workspace, echo=FALSE}
+rm(list= ls())
+```
+&copy; Aroge
